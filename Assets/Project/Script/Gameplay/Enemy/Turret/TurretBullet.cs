@@ -1,44 +1,72 @@
 using UnityEngine;
 
+/// <summary>
+/// Gestisce il comportamento di un proiettile sparato da una torretta.
+/// Si muove in linea retta, infligge danno al player al contatto,
+/// e si distrugge dopo un certo tempo di vita o quando colpisce qualcosa.
+/// </summary>
 public class TurretBullet : MonoBehaviour
 {
     [Header("Settings")]
+    // Velocità di movimento del proiettile (unità al secondo)
     [SerializeField] private float _speed = 20f;
+    // Danno inflitto al player se colpito direttamente
     [SerializeField] private int _damage = 10;
+    // Tempo massimo di vita del proiettile (evita che rimanga in gioco infinitamente)
     [SerializeField] private float _lifeTime = 1.5f;
 
     void Start()
     {
+        // DISTRUZIONE AUTOMATICA DOPO TIMEOUT
+        // Se il proiettile non colpisce nulla entro _lifeTime secondi, si distrugge
+        // Questo previene accumulo di proiettili persi nello spazio (memory leak)
         Destroy(gameObject, _lifeTime);
     }
 
     void Update()
     {
+        // MOVIMENTO IN LINEA RETTA
+        // Translate muove l'oggetto nella direzione specificata
+        // Vector3.forward = (0, 0, 1) nella direzione "avanti" dell'oggetto locale
+        // _speed * Time.deltaTime: calcola la distanza da percorrere questo frame
+        // (Time.deltaTime assicura movimento frame-rate indipendente)
         transform.Translate(Vector3.forward * _speed * Time.deltaTime);
     }
 
     void OnTriggerEnter(Collider other)
     {
-        // 1. Ignoriamo i Trigger (zone di attivazione, sensori, ecc.)
+        // STEP 1: IGNORA I TRIGGER (SENSORI E ZONE DI ATTIVAZIONE)
+        // I collider con isTrigger == true sono usati per rilevare posizioni, non per collisioni fisiche
+        // Se colpissimo un trigger, continueremmo a volare attraverso (comportamento indesiderato)
         if (other.isTrigger) return;
 
-        // DEBUG: Vediamo nella console cosa abbiamo colpito
+        // DEBUG: Log nella console per vedere cosa abbiamo colpito durante lo sviluppo
         Debug.Log($"Proiettile ha colpito: {other.name} (Tag: {other.tag})");
 
-        // 2. Cerchiamo la vita SULL'OGGETTO O SUI GENITORI
-        // GetComponentInParent è più sicuro perché trova lo script anche se colpiamo un piede o un braccio
+        // STEP 2: CERCA IL COMPONENTE PLAYERHEALTH SUL TARGET
+        // GetComponentInParent cerca il componente NON SOLO sul collider stesso,
+        // ma anche su tutti i parent GameObject
+        // Questo è importante se il collider è su un "bone" (es. player arm/leg mesh)
+        // e il componente PlayerHealth è sul root GameObject del player
         PlayerHealth playerHealth = other.GetComponentInParent<PlayerHealth>();
 
-        // Se abbiamo trovato la vita (quindi è il Player)
+        // Se abbiamo trovato PlayerHealth, il target è il player
         if (playerHealth != null)
         {
+            // Infligi danno al player
             playerHealth.TakeDamage(_damage);
-            Destroy(gameObject); // Distruggiamo il proiettile dopo aver fatto danno
-        }
-        // Se NON è il player, NON è la torretta e NON è un altro proiettile... distruggiamo (muri, pavimento)
-        else if (!other.CompareTag("Turret") && !other.CompareTag("Bullet"))
-        {
+            // Distruggi il proiettile (è stato "consumato" dal colpo)
             Destroy(gameObject);
         }
+        // Se NON è il player, controlla se è un oggetto che NON deve fermare il proiettile
+        // (Turret che ha sparato e Bullet di altre torrette devono passare attraverso)
+        else if (!other.CompareTag("Turret") && !other.CompareTag("Bullet"))
+        {
+            // Se non è Player, non è Turret e non è Bullet, allora è un muro/ostacolo
+            // Distruggi il proiettile (ha colpito una superficie solida)
+            Destroy(gameObject);
+        }
+        // Se la condizione else if è falsa significa che è o una Turret o un Bullet
+        // In questo caso NON facciamo nulla (il proiettile continua a volare)
     }
 }

@@ -1,68 +1,126 @@
 using UnityEngine;
 
+/// <summary>
+/// Gestisce il comportamento di una torretta che traccia il player e spara proiettili.
+/// Ruota verso il player quando è nel raggio di rilevamento, mantiene un rateo di fuoco costante,
+/// e visualizza il raggio di attacco nell'editor per debug.
+/// </summary>
 public class TurretController : MonoBehaviour
 {
     [Header("References")]
+    // Transform della parte che ruota (es. la "testa" della torretta)
     [SerializeField] private Transform _partToRotate;
-    [SerializeField] private Transform _firePoint;     // NUOVO: Da dove escono i colpi
-    [SerializeField] private GameObject _bulletPrefab; // NUOVO: Cosa spariamo
+    // Transform del punto da cui escono i proiettili (generalmente la "bocca" della torretta)
+    [SerializeField] private Transform _firePoint;
+    // Prefab del proiettile da istanziare quando spariamo
+    [SerializeField] private GameObject _bulletPrefab;
 
     [Header("Settings")]
+    // Velocità di rotazione della torretta verso il target (lerp factor)
     [SerializeField] private float _rotationSpeed = 5f;
+    // Correzione manuale dell'angolo di rotazione (utile se il modello 3D non è allineato)
+    // Range: da -180 a 180 gradi per evitare valori nonsensali
     [Range(-180f, 180f)]
     [SerializeField] private float _modelCorrection = 0f;
 
     [Header("Combat Settings")]
-    [SerializeField] private float _fireRate = 1f; // Colpi al secondo
+    // Rateo di fuoco: quanti colpi al secondo (es. 2 = 2 colpi/sec = 1 colpo ogni 0.5s)
+    [SerializeField] private float _fireRate = 1f;
 
-    // Variabili interne
+    // ════════════════════════════════════════════════════════════════
+    // VARIABILI INTERNE
+    // ════════════════════════════════════════════════════════════════
+
+    // Transform del player (cachato per evitare FindGameObjectWithTag() ogni frame)
     private Transform _playerTransform;
-    private bool _isPlayerInRange = false; // NUOVO: Stato di attivazione
-    private float _fireCountdown = 0f;     // NUOVO: Timer per il rateo di fuoco
+    // Flag che indica se il player è attualmente dentro il raggio di rilevamento della torretta
+    private bool _isPlayerInRange = false;
+    // Timer che conta i secondi rimasti prima del prossimo sparo
+    // (scende da (1/_fireRate) a 0, poi resetta)
+    private float _fireCountdown = 0f;
 
     void Start()
     {
+        // INIZIALIZZAZIONE: TROVA IL PLAYER
+        // FindGameObjectWithTag è costoso, ma viene fatto solo una volta in Start()
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-        if (playerObj != null) _playerTransform = playerObj.transform;
+        if (playerObj != null) 
+        {
+            _playerTransform = playerObj.transform;
+        }
 
-        if (_partToRotate == null) _partToRotate = transform;
+        // FALLBACK: Se _partToRotate non è assegnata, usa il transform della torretta stessa
+        if (_partToRotate == null) 
+        {
+            _partToRotate = transform;
+        }
     }
 
     void Update()
     {
-        // Se il player non esiste, esci
+        // PROTEZIONE: Se il player non esiste, non fare nulla
         if (_playerTransform == null) return;
 
-        // Eseguiamo la logica SOLO se il player è nel raggio (Trigger)
+        // ESECUZIONE LOGICA PRINCIPALE SOLO SE PLAYER È IN RANGE
+        // Evita calcoli inutili quando il player è lontano (ottimizzazione)
         if (_isPlayerInRange)
         {
-            // 1. Inseguimento
+            // STEP 1: TRACCIA E RUOTA VERSO IL PLAYER
             TrackPlayer();
 
-            // 2. Gestione Sparo
+            // STEP 2: GESTIONE DELLO SPARO
+            // Controlla se è tempo di sparare (il timer è sceso a 0 o sotto)
             if (_fireCountdown <= 0f)
             {
                 Shoot();
-                _fireCountdown = 1f / _fireRate; // Resetta timer (es. 1/2 = 0.5s)
+                // Resetta il timer: 1 / _fireRate = intervallo tra spari
+                // Es: fireRate=2 → 1/2 = 0.5s tra un sparo e l'altro
+                _fireCountdown = 1f / _fireRate;
             }
 
-            // Diminuisce il timer ogni frame
+            // DECREMENTO TIMER
+            // Ogni frame, il timer scende di Time.deltaTime secondi
+            // Quando raggiunge 0, è tempo di sparare di nuovo
             _fireCountdown -= Time.deltaTime;
         }
     }
 
+    /// <summary>
+    /// Calcola la direzione verso il player e ruota la torretta verso di lui.
+    /// Usa Lerp per una rotazione smooth invece di rotazione istantanea.
+    /// </summary>
     void TrackPlayer()
     {
+        // CALCOLO DELLA DIREZIONE
+        // Sottrai la posizione della torretta dalla posizione del player
         Vector3 direction = _playerTransform.position - _partToRotate.position;
+        
+        // APPIATTISCI L'ASSE Y (MOVIMENTO SOLO ORIZZONTALE)
+        // Azzera la componente Y della direzione
+        // Questo impedisce che la torretta guardi verso l'alto/basso (rimane orizzontale)
         direction.y = 0;
 
+        // PROTEZIONE: Se la direzione è zero (player è esattamente nella stessa posizione), esci
+        // LookRotation() non può lavorare con un vettore zero
         if (direction == Vector3.zero) return;
 
+        // CREA IL QUATERNIONE DI ROTAZIONE
+        // LookRotation crea una rotazione che fa "guardare" verso la direzione specificata
         Quaternion lookRotation = Quaternion.LookRotation(direction);
 
-        // Applichiamo la tua correzione che hai trovato (es. 90)
+        // APPLICA LA CORREZIONE DEL MODELLO
+        // Se il modello 3D della torretta non è allineato correttamente,
+        // _modelCorrection compensa con una rotazione aggiuntiva intorno all'asse Y
+        // Es: se il modello guarda "a sinistra" di default, _modelCorrection ruota verso destra
         Quaternion correctedTarget = lookRotation * Quaternion.Euler(0f, _modelCorrection, 0f);
 
+        // INTERPOLAZIONE SMOOTH
+        // Lerp interpola tra la rotazione attuale e la rotazione target
+        // Parametri:
+        //   - _partToRotate.rotation: rotazione attuale
+        //   - correctedTarget: rotazione desiderata
+        //   - Time.deltaTime * _rotationSpeed: fattore di interpolazione (velocità)
+        // Più alto _rotationSpeed, più veloce la rotazione (max 1 = istantanea)
         _partToRotate.rotation = Quaternion.Lerp(
             _partToRotate.rotation,
             correctedTarget,
@@ -70,15 +128,31 @@ public class TurretController : MonoBehaviour
         );
     }
 
+    /// <summary>
+    /// Istanzia un proiettile al firePoint e lo orienta verso il player.
+    /// La rotazione del proiettile viene forzata per garantire che voli dritto.
+    /// </summary>
     void Shoot()
     {
+        // VALIDAZIONE: Controlla che tutti i riferimenti necessari esistono
         if (_bulletPrefab != null && _firePoint != null)
         {
-            // 1. Creiamo il proiettile
-            GameObject bulletObj = Instantiate(_bulletPrefab, _firePoint.position, _firePoint.rotation);
+            // STEP 1: ISTANZIA IL PROIETTILE
+            // Instantiate crea una copia del prefab alla posizione e rotazione del firePoint
+            // Parametri:
+            //   - _bulletPrefab: il prefab da clonare
+            //   - _firePoint.position: posizione dello spawn (punta della torretta)
+            //   - _firePoint.rotation: rotazione iniziale (dovrebbe già puntare verso il player)
+            GameObject bulletObj = Instantiate(
+                _bulletPrefab, 
+                _firePoint.position, 
+                _firePoint.rotation
+            );
 
-            // 2. FIX: Forziamo il proiettile a guardare il player istantaneamente
-            // Questo sovrascrive qualsiasi errore di rotazione del FirePoint
+            // STEP 2: CORREZIONE FORZATA DELLA ROTAZIONE DEL PROIETTILE
+            // Anche se la torretta è orientata correttamente, a volte il firePoint
+            // potrebbe non essere perfettamente allineato (errori di setup nel modello)
+            // LookAt forza il proiettile a guardare direttamente il player istantaneamente
             if (_playerTransform != null)
             {
                 bulletObj.transform.LookAt(_playerTransform);
@@ -86,39 +160,67 @@ public class TurretController : MonoBehaviour
         }
         else
         {
+            // DEBUG: Se mancano i reference, avvisa lo sviluppatore nella console
             Debug.LogError("Manca BulletPrefab o FirePoint sulla torretta!");
         }
     }
 
     // ════════════════════════════════════════════════════════════════
-    // LOGICA TRIGGER (Il sensore della torretta)
+    // SISTEMA DI RILEVAMENTO (Trigger Collider)
     // ════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Viene invocato quando un collider entra nel trigger della torretta.
+    /// Se è il player, abilita la modalità "combattimento" della torretta.
+    /// </summary>
     void OnTriggerEnter(Collider other)
     {
-        // Quando il player entra nella sfera invisibile
+        // Controlla se l'oggetto che entra ha il tag "Player"
         if (other.CompareTag("Player"))
         {
+            // Abilita la torretta: inizia a tracciare e sparare
             _isPlayerInRange = true;
         }
     }
 
+    /// <summary>
+    /// Viene invocato quando un collider esce dal trigger della torretta.
+    /// Se è il player, disabilita la modalità "combattimento" della torretta.
+    /// </summary>
     void OnTriggerExit(Collider other)
     {
-        // Quando il player esce dalla sfera
+        // Controlla se l'oggetto che esce ha il tag "Player"
         if (other.CompareTag("Player"))
         {
+            // Disabilita la torretta: smette di tracciare e sparare
             _isPlayerInRange = false;
         }
     }
 
-    // Debug Visivo: Disegna la sfera nell'editor per vedere il raggio
+    // ════════════════════════════════════════════════════════════════
+    // DEBUG VISIVO (Solo in Editor)
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Disegna il raggio di rilevamento della torretta come sfera di Gizmo.
+    /// Visibile solo quando il GameObject è selezionato nell'editor.
+    /// Utile per debuggare e visualizzare il raggio di attacco.
+    /// </summary>
     void OnDrawGizmosSelected()
     {
+        // Colore del gizmo (rosso = zona di attacco)
         Gizmos.color = Color.red;
+        
+        // Recupera il SphereCollider usato come trigger di rilevamento
         SphereCollider rangeCollider = GetComponent<SphereCollider>();
+        
+        // Se il collider esiste, disegna una sfera wire al raggio specificato
         if (rangeCollider != null)
         {
+            // DrawWireSphere crea una sfera wireframe (non piena)
+            // Parametri:
+            //   - transform.position: centro della sfera (posizione della torretta)
+            //   - rangeCollider.radius: raggio della sfera di rilevamento
             Gizmos.DrawWireSphere(transform.position, rangeCollider.radius);
         }
     }
