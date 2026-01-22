@@ -129,6 +129,12 @@ public class PlayerHealth : MonoBehaviour
         // Notifica tutti i listener che il player è morto
         OnDeath?.Invoke();
 
+        // ← NUOVO: Avvisa il GameManager che il player è morto
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.GameOver(false); // false = ha perso (morto)
+        }
+
         // Cerca il componente PlayerController sullo stesso GameObject
         PlayerController controller = GetComponent<PlayerController>();
         // Se esiste un PlayerController, disabilitalo per impedire ulteriori movimenti/azioni
