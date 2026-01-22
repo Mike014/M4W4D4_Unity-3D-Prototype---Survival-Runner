@@ -11,6 +11,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float _groundCheckRadius = 0.2f; // Raggio della sfera di check
     [SerializeField] private LayerMask _groundLayer; // Layer del terreno
     
+    [Header("Interaction Settings")]
+    [SerializeField] private float _pushForce = 10f; // Forza della spinta indietro
+    [SerializeField] private float _recoilDuration = 0.65f; // Tempo in cui i controlli sono bloccati dopo l'urto
+
     [Header("References")]
     private Rigidbody _rb;
 
@@ -21,6 +25,9 @@ public class PlayerController : MonoBehaviour
     
     // Variabile per tracciare se siamo a terra
     private bool _isGrounded;
+
+    // Variabile per gestire il blocco movimento dopo l'urto
+    private float _recoilTimer = 0f;
 
     void Start()
     {
@@ -36,10 +43,12 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // ════════════════════════════════════════════════════════════════
-        // INPUT - Leggiamo in Update per massima responsività
-        // ════════════════════════════════════════════════════════════════
-        
+        // Gestione timer del rinculo
+        if (_recoilTimer > 0)
+        {
+            _recoilTimer -= Time.deltaTime;
+        }
+
         _horizontalInput = Input.GetAxis("Horizontal");
         _verticalInput = Input.GetAxis("Vertical");
         
@@ -54,8 +63,6 @@ public class PlayerController : MonoBehaviour
         // GROUND CHECK - Verifichiamo se siamo a terra
         // ════════════════════════════════════════════════════════════════
         
-        // Physics.CheckSphere crea una sfera invisibile nella posizione specificata
-        // Ritorna true se la sfera tocca qualsiasi collider nel layer specificato
         _isGrounded = Physics.CheckSphere(
             _groundCheck.position,      // Posizione del check
             _groundCheckRadius,          // Raggio della sfera
@@ -72,6 +79,10 @@ public class PlayerController : MonoBehaviour
 
     void MovePlayer()
     {
+        // IMPORTANTE: Se siamo sotto effetto del rinculo (recoil),
+        // NON applichiamo il movimento volontario, lasciamo agire la fisica della spinta.
+        if (_recoilTimer > 0) return;
+
         // Otteniamo la direzione in cui la camera sta guardando
         Vector3 cameraForward = Camera.main.transform.forward;
         Vector3 cameraRight = Camera.main.transform.right;
@@ -98,41 +109,45 @@ public class PlayerController : MonoBehaviour
     
     void HandleJump()
     {
-        // ════════════════════════════════════════════════════════════════
-        // LOGICA DEL SALTO
-        // ════════════════════════════════════════════════════════════════
-        
         // Possiamo saltare SOLO se:
         // 1. Abbiamo premuto spazio (_jumpInput = true)
         // 2. Siamo a terra (_isGrounded = true)
         if(_jumpInput && _isGrounded)
         {
             // AddForce applica una forza istantanea
-            // ForceMode.Impulse = applica la forza tenendo conto della massa
-            // Direzione: Vector3.up = (0, 1, 0)
             _rb.AddForce(Vector3.up * _jumpForce, ForceMode.Impulse);
         }
         
         // IMPORTANTE: Resettiamo _jumpInput dopo averlo processato
-        // Altrimenti il salto verrebbe applicato ogni FixedUpdate!
         _jumpInput = false;
     }
-    
+
     // ════════════════════════════════════════════════════════════════
-    // VISUALIZZAZIONE DEBUG - Vedere la sfera di ground check
+    // INTERAZIONE CON I MURI (BOUNDARIES)
     // ════════════════════════════════════════════════════════════════
-    
-    void OnDrawGizmosSelected()
+    private void OnCollisionEnter(Collision collision)
     {
-        // OnDrawGizmosSelected viene chiamato dall'editor quando selezioni l'oggetto
-        // Serve per visualizzare elementi di debug nella Scene view
-        
-        if(_groundCheck == null) return;
-        
-        // Colore della sfera: verde se a terra, rosso se in aria
-        Gizmos.color = _isGrounded ? Color.green : Color.red;
-        
-        // Disegna una sfera wireframe (solo contorno) nella posizione del ground check
-        Gizmos.DrawWireSphere(_groundCheck.position, _groundCheckRadius);
+        // Controlliamo se l'oggetto toccato ha il tag "Boundaries"
+        if (collision.gameObject.CompareTag("Boundaries"))
+        {
+            // Calcoliamo la direzione opposta all'impatto.
+            // collision.contacts[0].normal ci dà il vettore perpendicolare alla superficie colpita (che punta verso fuori)
+            Vector3 pushDirection = collision.contacts[0].normal;
+
+            // Appiattiamo la spinta sull'asse Y per evitare che il player voli via se colpisce un muro storto
+            pushDirection.y = 0;
+            pushDirection.Normalize();
+
+            // Resettiamo la velocità attuale per dare un impatto pulito
+            _rb.velocity = Vector3.zero;
+
+            // Applichiamo la forza impulsiva indietro
+            _rb.AddForce(pushDirection * _pushForce, ForceMode.Impulse);
+
+            // Attiviamo il timer di rinculo per bloccare l'input per un breve istante
+            _recoilTimer = _recoilDuration;
+            
+            Debug.Log($"Colpito muro! Spinta in direzione: {pushDirection}");
+        }
     }
 }

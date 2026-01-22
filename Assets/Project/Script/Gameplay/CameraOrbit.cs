@@ -67,15 +67,9 @@ public class CameraOrbit : MonoBehaviour
         // Creiamo la rotazione
         Quaternion rotation = Quaternion.Euler(_currentY, _currentX, 0);
         
-        // ════════════════════════════════════════════════════════════════
-        // MODIFICA CHIAVE: Posizione DIRETTA senza Lerp
-        // Il player è già interpolato dal Rigidbody, non serve double smoothing
-        // ════════════════════════════════════════════════════════════════
-        
         Vector3 negDistance = new Vector3(0, 0, -_distance);
         Vector3 desiredPosition = _target.position + rotation * negDistance;
         
-        // NUOVA VERSIONE: Posizione diretta (no lerp sulla posizione)
         transform.position = desiredPosition;
         
         // VECCHIA VERSIONE (causava jitter con interpolation):

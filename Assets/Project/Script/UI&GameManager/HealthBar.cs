@@ -8,13 +8,6 @@ public class HealthBar : MonoBehaviour
     [SerializeField] private Image _fillImage;
     [SerializeField] private Text _healthText;
 
-    [Header("Visual Settings")]
-    [SerializeField] private Color _fullHealthColor = Color.green;
-    [SerializeField] private Color _mediumHealthColor = Color.yellow;
-    [SerializeField] private Color _lowHealthColor = Color.red;
-    [SerializeField] private float _lowHealthThreshold = 0.3f;
-    [SerializeField] private float _mediumHealthThreshold = 0.6f;
-
     [Header("Animation Settings")]
     [SerializeField] private bool _animateChanges = true;
     [SerializeField] private float _animationSpeed = 5f;
@@ -44,6 +37,7 @@ public class HealthBar : MonoBehaviour
 
     void Update()
     {
+        // Gestione animazione fluida
         if (_animateChanges && _fillImage != null)
         {
             _fillImage.fillAmount = Mathf.Lerp(
@@ -58,6 +52,7 @@ public class HealthBar : MonoBehaviour
     {
         if (_fillImage == null) return;
 
+        // Calcolo percentuale (0.0 - 1.0)
         float healthPercentage = (float)currentHealth / (float)maxHealth;
 
         if (_animateChanges)
@@ -69,31 +64,10 @@ public class HealthBar : MonoBehaviour
             _fillImage.fillAmount = healthPercentage;
         }
 
-        UpdateColor(healthPercentage);
-
+        // Aggiornamento testo opzionale
         if (_healthText != null)
         {
             _healthText.text = $"{currentHealth}/{maxHealth}";
         }
-    }
-
-    private void UpdateColor(float healthPercentage)
-    {
-        Color targetColor;
-
-        if (healthPercentage <= _lowHealthThreshold)
-        {
-            targetColor = _lowHealthColor;
-        }
-        else if (healthPercentage <= _mediumHealthThreshold)
-        {
-            targetColor = _mediumHealthColor;
-        }
-        else
-        {
-            targetColor = _fullHealthColor;
-        }
-
-        _fillImage.color = targetColor;
     }
 }
