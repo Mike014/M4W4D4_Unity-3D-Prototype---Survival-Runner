@@ -136,6 +136,7 @@ GameObject:
   - component: {fileID: 101542015}
   - component: {fileID: 101542019}
   - component: {fileID: 101542020}
+  - component: {fileID: 101542021}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -278,6 +279,34 @@ MonoBehaviour:
   _groundLayer:
     serializedVersion: 2
     m_Bits: 64
+--- !u!114 &101542021
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 101542014}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81f6113b815bd634da2ce412a3d51946, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _maxHealth: 100
+  _currentHealth: 0
+  _enableInvincibilityFrames: 1
+  _invincibilityDuration: 1
+  OnHealthChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDeath:
+    m_PersistentCalls:
+      m_Calls: []
+  OnDamageTaken:
+    m_PersistentCalls:
+      m_Calls: []
+  OnHealed:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &580970573
 GameObject:
   m_ObjectHideFlags: 0
