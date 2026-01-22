@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    // Variabili private
     [Header("Movement Settings")]
     [SerializeField] private float _moveSpeed = 5f;
 
@@ -33,15 +32,13 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Movimento in FixedUpdate perhè usiamo la fisica
-        // ----
+        // Movimento in FixedUpdate perché usiamo la fisica
         MovePlayer();
     }
 
     void MovePlayer()
     {
         // Otteniamo la direzione in cui la camera sta guardando
-        // ma IGNORIAMO l'inclinazione verticale (y = 0)
         Vector3 cameraForward = Camera.main.transform.forward;
         Vector3 cameraRight = Camera.main.transform.right;
 
@@ -49,20 +46,24 @@ public class PlayerController : MonoBehaviour
         cameraForward.y = 0;
         cameraRight.y = 0;
 
-
         // Normalizziamo per sicurezza
         cameraForward.Normalize();
         cameraRight.Normalize();
 
-        // vettore di movimento basato sull'input
-        Vector3 moveDirection = cameraRight * _horizontalInput + cameraForward *_verticalInput;
-
-        // Normalizziamo il vettore per evitare movimento più veloce in diagonale
+        // Vettore di movimento basato sull'input
+        Vector3 moveDirection = cameraRight * _horizontalInput + cameraForward * _verticalInput;
         moveDirection.Normalize();
 
-        _rb.velocity = new Vector3(
-            moveDirection.x * _moveSpeed, _rb.velocity.y, moveDirection.z * _moveSpeed
-        );
+        // ════════════════════════════════════════════════════════════════
+        // SOLUZIONE AL JITTER: Usa velocity invece di MovePosition
+        // con Interpolation attiva!
+        // ════════════════════════════════════════════════════════════════
         
+        // Impostiamo la velocità orizzontale, mantenendo quella verticale
+        _rb.velocity = new Vector3(
+            moveDirection.x * _moveSpeed,
+            _rb.velocity.y,  // Manteniamo velocità verticale (gravità/salto)
+            moveDirection.z * _moveSpeed
+        );
     }
 }
