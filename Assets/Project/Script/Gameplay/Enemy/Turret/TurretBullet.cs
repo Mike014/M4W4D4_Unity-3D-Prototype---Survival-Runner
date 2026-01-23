@@ -4,6 +4,9 @@ using UnityEngine;
 /// Gestisce il comportamento di un proiettile sparato da una torretta.
 /// Si muove in linea retta, infligge danno al player al contatto,
 /// e si distrugge dopo un certo tempo di vita o quando colpisce qualcosa.
+/// 
+/// REFACTORING: La logica di movimento e collisione è separata dalle dipendenze
+/// (Destroy, OnTriggerEnter, GetComponentInParent) per facilitare il testing.
 /// </summary>
 public class TurretBullet : MonoBehaviour
 {
@@ -26,22 +29,42 @@ public class TurretBullet : MonoBehaviour
     void Update()
     {
         // MOVIMENTO IN LINEA RETTA
-        // Translate muove l'oggetto nella direzione specificata
-        // Vector3.forward = (0, 0, 1) nella direzione "avanti" dell'oggetto locale
-        // _speed * Time.deltaTime: calcola la distanza da percorrere questo frame
-        // (Time.deltaTime assicura movimento frame-rate indipendente)
-        transform.Translate(Vector3.forward * _speed * Time.deltaTime);
+        // Delega il calcolo del movimento a metodo puro, poi applica il risultato
+        Vector3 movement = CalculateMovement(_speed, Time.deltaTime);
+        transform.Translate(movement);
     }
 
-    void OnTriggerEnter(Collider other)
+    /// <summary>
+    /// Logica pura: Calcola il vettore di movimento per questo frame.
+    /// Non modifica stato, non dipende da nient'altro.
+    /// ✅ TESTABILE: Puoi passare speed e deltaTime arbitrari
+    /// </summary>
+    private Vector3 CalculateMovement(float speed, float deltaTime)
     {
+        // MOVIMENTO IN LINEA RETTA
+        // Translate muove l'oggetto nella direzione specificata
+        // Vector3.forward = (0, 0, 1) nella direzione "avanti" dell'oggetto locale
+        // speed * deltaTime: calcola la distanza da percorrere questo frame
+        // (Time.deltaTime assicura movimento frame-rate indipendente)
+        return Vector3.forward * speed * deltaTime;
+    }
+
+    /// <summary>
+    /// Logica pura: Determina se il proiettile dovrebbe essere distrutto in base a una collisione.
+    /// Esamina il collider colpito e decide se è un ostacolo, il player, o passabile (turret/bullet).
+    /// ✅ TESTABILE: Puoi passare qualsiasi Collider e verificare il risultato
+    /// </summary>
+    private bool ShouldDestroyBullet(Collider other, out bool playerHit)
+    {
+        playerHit = false;
+
         // STEP 1: IGNORA I TRIGGER (SENSORI E ZONE DI ATTIVAZIONE)
         // I collider con isTrigger == true sono usati per rilevare posizioni, non per collisioni fisiche
         // Se colpissimo un trigger, continueremmo a volare attraverso (comportamento indesiderato)
-        if (other.isTrigger) return;
-
-        // DEBUG: Log nella console per vedere cosa abbiamo colpito durante lo sviluppo
-        Debug.Log($"Proiettile ha colpito: {other.name} (Tag: {other.tag})");
+        if (other.isTrigger)
+        {
+            return false;  // Non distruggere il proiettile su un trigger
+        }
 
         // STEP 2: CERCA IL COMPONENTE PLAYERHEALTH SUL TARGET
         // GetComponentInParent cerca il componente NON SOLO sul collider stesso,
@@ -53,20 +76,49 @@ public class TurretBullet : MonoBehaviour
         // Se abbiamo trovato PlayerHealth, il target è il player
         if (playerHealth != null)
         {
-            // Infligi danno al player
-            playerHealth.TakeDamage(_damage);
-            // Distruggi il proiettile (è stato "consumato" dal colpo)
-            Destroy(gameObject);
+            playerHit = true;  // Flag per sapere che abbiamo colpito il player
+            return true;       // Distruggi il proiettile
         }
+
         // Se NON è il player, controlla se è un oggetto che NON deve fermare il proiettile
         // (Turret che ha sparato e Bullet di altre torrette devono passare attraverso)
-        else if (!other.CompareTag("Turret") && !other.CompareTag("Bullet"))
+        if (!other.CompareTag("Turret") && !other.CompareTag("Bullet"))
         {
             // Se non è Player, non è Turret e non è Bullet, allora è un muro/ostacolo
-            // Distruggi il proiettile (ha colpito una superficie solida)
+            return true;  // Distruggi il proiettile (ha colpito una superficie solida)
+        }
+
+        // Se la condizione è falsa significa che è o una Turret o un Bullet
+        // In questo caso NON distruggere il proiettile (continua a volare)
+        return false;
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        // DEBUG: Log nella console per vedere cosa abbiamo colpito durante lo sviluppo
+        Debug.Log($"Proiettile ha colpito: {other.name} (Tag: {other.tag})");
+
+        // STEP 1: DETERMINA SE IL PROIETTILE DEVE ESSERE DISTRUTTO
+        // Usa la logica pura ShouldDestroyBullet() per decidere
+        bool playerHit = false;
+        bool shouldDestroy = ShouldDestroyBullet(other, out playerHit);
+
+        // STEP 2: SE HA COLPITO IL PLAYER, INFLIGGI DANNO
+        if (playerHit)
+        {
+            // Cerca di nuovo il componente PlayerHealth (è già stato trovato in ShouldDestroyBullet)
+            // Idealmente, dovremmo passarlo come parametro, ma per ora facciamo così per chiarezza
+            PlayerHealth playerHealth = other.GetComponentInParent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(_damage);
+            }
+        }
+
+        // STEP 3: SE DEVE ESSERE DISTRUTTO, DISTRUGGI IL PROIETTILE
+        if (shouldDestroy)
+        {
             Destroy(gameObject);
         }
-        // Se la condizione else if è falsa significa che è o una Turret o un Bullet
-        // In questo caso NON facciamo nulla (il proiettile continua a volare)
     }
 }

@@ -387,6 +387,7 @@ MonoBehaviour:
   OnHealed:
     m_PersistentCalls:
       m_Calls: []
+  _delayBeforeGameOver: 0.5
 --- !u!1001 &117771684
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1892,7 +1893,7 @@ Camera:
   m_CullingMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_RenderingPath: 0
+  m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
   m_TargetEye: 3
@@ -3059,6 +3060,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 2391171315247633409, guid: 3016bb18687bb7946b7f8ee3e9b88302, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 2.27
+      objectReference: {fileID: 0}
     - target: {fileID: 2391171315247633409, guid: 3016bb18687bb7946b7f8ee3e9b88302, type: 3}
       propertyPath: m_LocalPosition.x
       value: 7.6

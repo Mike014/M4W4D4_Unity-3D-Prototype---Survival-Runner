@@ -4,6 +4,9 @@ using UnityEngine;
 /// Gestisce il comportamento di una torretta che traccia il player e spara proiettili.
 /// Ruota verso il player quando è nel raggio di rilevamento, mantiene un rateo di fuoco costante,
 /// e visualizza il raggio di attacco nell'editor per debug.
+/// 
+/// REFACTORING: La logica di rotazione, fuoco e calcoli è separata dalle dipendenze
+/// (Transform, Instantiate, FindGameObjectWithTag) per facilitare il testing.
 /// </summary>
 public class TurretController : MonoBehaviour
 {
@@ -27,9 +30,9 @@ public class TurretController : MonoBehaviour
     // Rateo di fuoco: quanti colpi al secondo (es. 2 = 2 colpi/sec = 1 colpo ogni 0.5s)
     [SerializeField] private float _fireRate = 1f;
 
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
     // VARIABILI INTERNE
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
 
     // Transform del player (cachato per evitare FindGameObjectWithTag() ogni frame)
     private Transform _playerTransform;
@@ -69,13 +72,12 @@ public class TurretController : MonoBehaviour
             TrackPlayer();
 
             // STEP 2: GESTIONE DELLO SPARO
-            // Controlla se è tempo di sparare (il timer è sceso a 0 o sotto)
-            if (_fireCountdown <= 0f)
+            // Controlla se è tempo di sparare usando la logica pura CanShootNow()
+            if (CanShootNow(_fireCountdown))
             {
                 Shoot();
-                // Resetta il timer: 1 / _fireRate = intervallo tra spari
-                // Es: fireRate=2 → 1/2 = 0.5s tra un sparo e l'altro
-                _fireCountdown = 1f / _fireRate;
+                // Resetta il timer usando la logica pura ResetFireCountdown()
+                _fireCountdown = ResetFireCountdown(_fireRate);
             }
 
             // DECREMENTO TIMER
@@ -86,44 +88,91 @@ public class TurretController : MonoBehaviour
     }
 
     /// <summary>
-    /// Calcola la direzione verso il player e ruota la torretta verso di lui.
-    /// Usa Lerp per una rotazione smooth invece di rotazione istantanea.
+    /// Logica pura: Controlla se è tempo di sparare.
+    /// Non modifica stato, restituisce solo true/false.
+    /// ✅ TESTABILE: Puoi passare qualsiasi fireCountdown
     /// </summary>
-    void TrackPlayer()
+    private bool CanShootNow(float fireCountdown)
+    {
+        // Se il countdown è sceso a 0 o sotto, è tempo di sparare
+        return fireCountdown <= 0f;
+    }
+
+    /// <summary>
+    /// Logica pura: Calcola il nuovo countdown per il prossimo sparo.
+    /// ✅ TESTABILE: Pura matematica (1 / fireRate)
+    /// </summary>
+    private float ResetFireCountdown(float fireRate)
+    {
+        // Resetta il timer: 1 / _fireRate = intervallo tra spari
+        // Es: fireRate=2 → 1/2 = 0.5s tra un sparo e l'altro
+        return 1f / fireRate;
+    }
+
+    /// <summary>
+    /// Calcola il movimento del timer nel tempo.
+    /// ✅ TESTABILE: Pura logica delta-time
+    /// </summary>
+    private float UpdateFireCountdown(float currentCountdown, float deltaTime)
+    {
+        // Decrementa il countdown di un frame
+        return currentCountdown - deltaTime;
+    }
+
+    /// <summary>
+    /// Calcola il quaternione di rotazione desiderato per guardare il player.
+    /// Logica pura: non modifica state, non dipende da Transform/Input.
+    /// ✅ TESTABILE: Puoi passare qualsiasi playerPos e turretPos
+    /// </summary>
+    private Quaternion CalculateTargetRotation(Vector3 playerPos, Vector3 turretPos, float modelCorrection)
     {
         // CALCOLO DELLA DIREZIONE
-        // Sottrai la posizione della torretta dalla posizione del player
-        Vector3 direction = _playerTransform.position - _partToRotate.position;
+        Vector3 direction = playerPos - turretPos;
         
         // APPIATTISCI L'ASSE Y (MOVIMENTO SOLO ORIZZONTALE)
         // Azzera la componente Y della direzione
-        // Questo impedisce che la torretta guardi verso l'alto/basso (rimane orizzontale)
         direction.y = 0;
 
-        // PROTEZIONE: Se la direzione è zero (player è esattamente nella stessa posizione), esci
+        // PROTEZIONE: Se la direzione è zero, ritorna rotazione identity
         // LookRotation() non può lavorare con un vettore zero
-        if (direction == Vector3.zero) return;
+        if (direction == Vector3.zero)
+        {
+            return Quaternion.identity;
+        }
 
         // CREA IL QUATERNIONE DI ROTAZIONE
-        // LookRotation crea una rotazione che fa "guardare" verso la direzione specificata
         Quaternion lookRotation = Quaternion.LookRotation(direction);
 
         // APPLICA LA CORREZIONE DEL MODELLO
-        // Se il modello 3D della torretta non è allineato correttamente,
-        // _modelCorrection compensa con una rotazione aggiuntiva intorno all'asse Y
-        // Es: se il modello guarda "a sinistra" di default, _modelCorrection ruota verso destra
-        Quaternion correctedTarget = lookRotation * Quaternion.Euler(0f, _modelCorrection, 0f);
+        Quaternion correctedTarget = lookRotation * Quaternion.Euler(0f, modelCorrection, 0f);
 
-        // INTERPOLAZIONE SMOOTH
+        return correctedTarget;
+    }
+
+    /// <summary>
+    /// Calcola la rotazione del turret verso il player e la applica.
+    /// Delega il calcolo a CalculateTargetRotation() (testabile)
+    /// e applica il risultato con Lerp (smooth).
+    /// </summary>
+    void TrackPlayer()
+    {
+        // STEP 1: CALCOLA LA ROTAZIONE DESIDERATA (Logica pura)
+        Quaternion targetRotation = CalculateTargetRotation(
+            _playerTransform.position,
+            _partToRotate.position,
+            _modelCorrection
+        );
+
+        // STEP 2: APPLICA LA ROTAZIONE CON SMOOTHING
         // Lerp interpola tra la rotazione attuale e la rotazione target
         // Parametri:
         //   - _partToRotate.rotation: rotazione attuale
-        //   - correctedTarget: rotazione desiderata
+        //   - targetRotation: rotazione desiderata (calcolata sopra)
         //   - Time.deltaTime * _rotationSpeed: fattore di interpolazione (velocità)
         // Più alto _rotationSpeed, più veloce la rotazione (max 1 = istantanea)
         _partToRotate.rotation = Quaternion.Lerp(
             _partToRotate.rotation,
-            correctedTarget,
+            targetRotation,
             Time.deltaTime * _rotationSpeed
         );
     }
@@ -165,9 +214,9 @@ public class TurretController : MonoBehaviour
         }
     }
 
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
     // SISTEMA DI RILEVAMENTO (Trigger Collider)
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Viene invocato quando un collider entra nel trigger della torretta.
@@ -197,9 +246,9 @@ public class TurretController : MonoBehaviour
         }
     }
 
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
     // DEBUG VISIVO (Solo in Editor)
-    // ════════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Disegna il raggio di rilevamento della torretta come sfera di Gizmo.

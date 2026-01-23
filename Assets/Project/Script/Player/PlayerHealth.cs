@@ -1,10 +1,13 @@
 using UnityEngine;
 using UnityEngine.Events;
+using System.Collections;
 
 /// <summary>
 /// Gestisce il sistema di salute del player.
 /// Traccia la vita attuale, notifica gli eventi quando il player subisce danno/guarigione/morte,
 /// e disabilita il controllo del player quando muore.
+/// 
+/// FIX: Attende che la HealthBar finisca l'animazione prima di mostrare la schermata di game over.
 /// </summary>
 public class PlayerHealth : MonoBehaviour
 {
@@ -23,6 +26,12 @@ public class PlayerHealth : MonoBehaviour
     public UnityEvent OnDamageTaken;
     // Evento invocato quando il player si guarisce
     public UnityEvent OnHealed;
+
+    [Header("Death Animation Settings")]
+    // ⭐ NUOVO: Tempo di attesa prima di mostrare la schermata di game over
+    // Questo permette alla HealthBar di completare l'animazione
+    // Valore tipico: 0.5-1.0 secondi (quanto dura l'animazione della barra)
+    [SerializeField] private float _delayBeforeGameOver = 0.5f;
 
     // Properties - permettono di leggere i valori ma non modificarli direttamente dall'esterno
     public int CurrentHealth => _currentHealth;
@@ -120,7 +129,8 @@ public class PlayerHealth : MonoBehaviour
 
     /// <summary>
     /// Gestisce la morte del player.
-    /// Disabilita i controlli e invoca l'evento OnDeath.
+    /// ⭐ NUOVO: Usa una Coroutine per aspettare che la HealthBar finisca l'animazione
+    /// prima di mostrare la schermata di game over.
     /// </summary>
     private void Die()
     {
@@ -129,18 +139,36 @@ public class PlayerHealth : MonoBehaviour
         // Notifica tutti i listener che il player è morto
         OnDeath?.Invoke();
 
-        // ← NUOVO: Avvisa il GameManager che il player è morto
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.GameOver(false); // false = ha perso (morto)
-        }
-
         // Cerca il componente PlayerController sullo stesso GameObject
         PlayerController controller = GetComponent<PlayerController>();
         // Se esiste un PlayerController, disabilitalo per impedire ulteriori movimenti/azioni
         if (controller != null)
         {
             controller.enabled = false;
+        }
+
+        // ⭐ NUOVO: Avvia una Coroutine per aspettare l'animazione della barra
+        // Prima di mostrare la schermata di game over
+        StartCoroutine(DelayedGameOver());
+    }
+
+    /// <summary>
+    /// Coroutine che attende che la HealthBar finisca l'animazione
+    /// prima di mostrare la schermata di game over.
+    /// ✅ FIX: La barra avrà tempo di completare l'animazione prima che Time.timeScale = 0
+    /// </summary>
+    private IEnumerator DelayedGameOver()
+    {
+        // STEP 1: Aspetta per il tempo specificato (_delayBeforeGameOver)
+        // Durante questo tempo, la HealthBar continua ad animarsi normalmente
+        // perché Time.timeScale è ancora 1
+        yield return new WaitForSeconds(_delayBeforeGameOver);
+
+        // STEP 2: Dopo il delay, avvisa il GameManager che il player è morto
+        // A questo punto, la barra dovrebbe essere completamente vuota
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.GameOver(false); // false = ha perso (morto)
         }
     }
 }
