@@ -5,10 +5,16 @@ public class GameManagerTests
 {
     private GameManager _gameManager;
     private GameObject _gameManagerObj;
+    private GameObject _eventManagerObj;
 
     [SetUp]
     public void Setup()
     {
+        // ✅ NUOVO: Crea GameEvents PRIMA di GameManager
+        // GameManager lo cercherà con FindObjectOfType nel Start()
+        _eventManagerObj = new GameObject("_EventManager");
+        _eventManagerObj.AddComponent<GameEvents>();
+
         // CREA IL GAMEOBJECT DEL GAME MANAGER
         _gameManagerObj = new GameObject("GameManager");
         _gameManager = _gameManagerObj.AddComponent<GameManager>();
@@ -17,9 +23,16 @@ public class GameManagerTests
     [TearDown]
     public void Teardown()
     {
+        // Pulisci GameManager
         if (_gameManagerObj != null)
         {
             Object.DestroyImmediate(_gameManagerObj);
+        }
+
+        // ✅ NUOVO: Pulisci anche GameEvents
+        if (_eventManagerObj != null)
+        {
+            Object.DestroyImmediate(_eventManagerObj);
         }
     }
 
@@ -30,6 +43,9 @@ public class GameManagerTests
     /// <summary>
     /// Verifica che IsTimeExpired() ritorna true quando il tempo è 0
     /// ✅ TESTABILE: Pura logica booleana
+    /// 
+    /// NOTA: Questo test NON è cambiato perché testa logica pura
+    /// che non dipende da Singleton o Event System
     /// </summary>
     [Test]
     public void IsTimeExpired_ReturnsTrue_WhenTimeIsZero()

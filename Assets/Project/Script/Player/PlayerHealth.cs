@@ -4,171 +4,119 @@ using System.Collections;
 
 /// <summary>
 /// Gestisce il sistema di salute del player.
-/// Traccia la vita attuale, notifica gli eventi quando il player subisce danno/guarigione/morte,
-/// e disabilita il controllo del player quando muore.
 /// 
-/// FIX: Attende che la HealthBar finisca l'animazione prima di mostrare la schermata di game over.
+/// ARCHITETTURA EVENT-DRIVEN PURA (no Singleton):
+/// - Trova GameEvents tramite FindObjectOfType
+/// - Pubblica l'evento quando il player muore
+/// - Non conosce GameManager
 /// </summary>
 public class PlayerHealth : MonoBehaviour
 {
     [Header("Health Settings")]
-    // La salute massima del player - modificabile in Inspector
     [SerializeField] private int _maxHealth = 100;
-    // La salute attuale del player - inizializzata in Start()
     [SerializeField] private int _currentHealth;
 
     [Header("Events")]
-    // Evento invocato quando la salute cambia: passa (salute_attuale, salute_massima)
     public UnityEvent<int, int> OnHealthChanged;
-    // Evento invocato quando il player muore
     public UnityEvent OnDeath;
-    // Evento invocato quando il player subisce danno
     public UnityEvent OnDamageTaken;
-    // Evento invocato quando il player si guarisce
     public UnityEvent OnHealed;
 
     [Header("Death Animation Settings")]
-    // ⭐ NUOVO: Tempo di attesa prima di mostrare la schermata di game over
-    // Questo permette alla HealthBar di completare l'animazione
-    // Valore tipico: 0.5-1.0 secondi (quanto dura l'animazione della barra)
     [SerializeField] private float _delayBeforeGameOver = 0.5f;
 
-    // Properties - permettono di leggere i valori ma non modificarli direttamente dall'esterno
     public int CurrentHealth => _currentHealth;
     public int MaxHealth => _maxHealth;
     public bool IsDead => _currentHealth <= 0;
 
+    private GameEvents _gameEvents;
+
     void Start()
     {
-        // Inizializza la salute attuale al massimo valore
         _currentHealth = _maxHealth;
-        // Notifica i listener che la salute è stata inizializzata
         OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
+        
+        // Trova GameEvents una volta all'inizio
+        _gameEvents = FindObjectOfType<GameEvents>();
+        if (_gameEvents == null)
+        {
+            Debug.LogError("[PLAYERHEALTH] GameEvents not found in scene!");
+        }
     }
 
-    /// <summary>
-    /// Riduce la salute del player di una certa quantità.
-    /// </summary>
-    /// <param name="damage">Quantità di danno da infliggere</param>
     public void TakeDamage(int damage)
     {
-        // Se siamo già morti, ignoriamo il danno (prevenire danno postume)
         if (IsDead) return;
 
-        // Sottrai il danno dalla salute attuale
         _currentHealth -= damage;
-        // Clamp assicura che la salute rimanga tra 0 e _maxHealth
-        // (non può scendere sotto 0, non può salire oltre il massimo)
         _currentHealth = Mathf.Clamp(_currentHealth, 0, _maxHealth);
 
-        // Notifica tutti i listener che la salute è cambiata
         OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
-        // Notifica che il danno è stato subito
         OnDamageTaken?.Invoke();
 
-        // Log per debug durante lo sviluppo
         Debug.Log($"Damage Taken: {damage}. Health: {_currentHealth}/{_maxHealth}");
 
-        // Se la salute raggiunge 0 o meno, il player muore
         if (IsDead)
         {
             Die();
         }
     }
 
-    /// <summary>
-    /// Aumenta la salute del player di una certa quantità.
-    /// Non funziona se il player è morto.
-    /// </summary>
-    /// <param name="healAmount">Quantità di guarigione</param>
     public void Heal(int healAmount)
     {
-        // Se siamo già morti, non possiamo guarirci (la morte è finale)
         if (IsDead) return;
 
-        // Aggiungi la guarigione alla salute attuale
         _currentHealth += healAmount;
-        // Clamp assicura che la salute non superi il massimo e resti sopra lo 0
         _currentHealth = Mathf.Clamp(_currentHealth, 0, _maxHealth);
 
-        // Notifica i listener che la salute è cambiata
         OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
-        // Notifica che il player è stato guarito
         OnHealed?.Invoke();
 
-        // Log per debug durante lo sviluppo
         Debug.Log($"Healed: {healAmount}. Health: {_currentHealth}/{_maxHealth}");
     }
 
-    /// <summary>
-    /// Modifica la salute massima del player.
-    /// </summary>
-    /// <param name="newMaxHealth">Il nuovo valore massimo di salute</param>
-    /// <param name="healToFull">Se true, riempie la salute fino al nuovo massimo. 
-    ///                          Se false, mantiene la salute attuale (ma clampata al nuovo massimo)</param>
     public void SetMaxHealth(int newMaxHealth, bool healToFull = false)
     {
-        // Aggiorna il valore massimo di salute
         _maxHealth = newMaxHealth;
 
         if (healToFull)
         {
-            // Opzione 1: Riempi completamente la salute al nuovo massimo
             _currentHealth = _maxHealth;
         }
         else
         {
-            // Opzione 2: Mantieni la salute attuale, ma assicurati che non ecceda il nuovo massimo
-            // (Es: se avevi 80 salute su 100, e abbasso il massimo a 50, diventi 50)
             _currentHealth = Mathf.Clamp(_currentHealth, 0, _maxHealth);
         }
 
-        // Notifica i listener che la salute è cambiata (sia il valore attuale che il massimo)
         OnHealthChanged?.Invoke(_currentHealth, _maxHealth);
     }
 
-    /// <summary>
-    /// Gestisce la morte del player.
-    /// ⭐ NUOVO: Usa una Coroutine per aspettare che la HealthBar finisca l'animazione
-    /// prima di mostrare la schermata di game over.
-    /// </summary>
     private void Die()
     {
-        // Log per debug
         Debug.Log("Player Died");
-        // Notifica tutti i listener che il player è morto
         OnDeath?.Invoke();
 
-        // Cerca il componente PlayerController sullo stesso GameObject
         PlayerController controller = GetComponent<PlayerController>();
-        // Se esiste un PlayerController, disabilitalo per impedire ulteriori movimenti/azioni
         if (controller != null)
         {
             controller.enabled = false;
         }
 
-        // ⭐ NUOVO: Avvia una Coroutine per aspettare l'animazione della barra
-        // Prima di mostrare la schermata di game over
         StartCoroutine(DelayedGameOver());
     }
 
-    /// <summary>
-    /// Coroutine che attende che la HealthBar finisca l'animazione
-    /// prima di mostrare la schermata di game over.
-    /// ✅ FIX: La barra avrà tempo di completare l'animazione prima che Time.timeScale = 0
-    /// </summary>
     private IEnumerator DelayedGameOver()
     {
-        // STEP 1: Aspetta per il tempo specificato (_delayBeforeGameOver)
-        // Durante questo tempo, la HealthBar continua ad animarsi normalmente
-        // perché Time.timeScale è ancora 1
         yield return new WaitForSeconds(_delayBeforeGameOver);
 
-        // STEP 2: Dopo il delay, avvisa il GameManager che il player è morto
-        // A questo punto, la barra dovrebbe essere completamente vuota
-        if (GameManager.Instance != null)
+        // ✅ Pubblica l'evento tramite GameEvents (trovato una volta in Start)
+        if (_gameEvents != null)
         {
-            GameManager.Instance.GameOver(false); // false = ha perso (morto)
+            _gameEvents.PublishGameOver(false);
+        }
+        else
+        {
+            Debug.LogError("[PLAYERHEALTH] GameEvents is null!");
         }
     }
 }

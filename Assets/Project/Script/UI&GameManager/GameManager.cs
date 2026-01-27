@@ -3,11 +3,19 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Gestisce lo stato globale del gioco: timer, raccolta monete, sblocco della porta.
-/// Implementa il pattern Singleton per accesso globale da altri script.
+/// Gestisce lo stato globale del gioco: timer, monete, vittoria/sconfitta.
 /// 
-/// REFACTORING: La logica di gioco è separata dalle dipendenze UI/Scene
-/// per consentire testing senza mockare componenti Unity complessi.
+/// ARCHITETTURA EVENT-DRIVEN PURA (no Singleton):
+/// - Trova GameEvents tramite FindObjectOfType (non Singleton)
+/// - ASCOLTA gli eventi pubblicati da Coin e PlayerHealth
+/// - PUBBLICA gli eventi che altri script devono conoscere
+/// - Logica pura rimane testabile e separata
+/// 
+/// Vantaggi:
+/// ✓ GameManager non è un Singleton
+/// ✓ GameEvents non è un Singleton
+/// ✓ Nessun accoppiamento statico
+/// ✓ Testabile: puoi creare istanze fake
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -36,23 +44,30 @@ public class GameManager : MonoBehaviour
     private int _currentCoins = 0;
     private bool _isGameOver = false;
     private bool _hasWon = false;
+    
+    // Riferimento locale a GameEvents (trovato tramite FindObjectOfType)
+    private GameEvents _gameEvents;
 
-    public static GameManager Instance;
-
-    private void Awake()
-    {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
-    }
+    // ════════════════════════════════════════════════════════════════
+    // LIFECYCLE UNITY
+    // ════════════════════════════════════════════════════════════════
 
     void Start()
     {
+        // ✅ TROVARE GameEvents senza Singleton
+        // Cerchiamo il componente GameEvents nella scena
+        _gameEvents = FindObjectOfType<GameEvents>();
+        
+        if (_gameEvents == null)
+        {
+            Debug.LogError("[GameManager] GameEvents not found in scene! Create a GameObject with GameEvents component.");
+            return;
+        }
+
+        // Sottoscrivi agli eventi
+        SubscribeToEvents();
+
+        // Setup UI
         Time.timeScale = 1f;
 
         if (_victoryImage != null)
@@ -119,104 +134,73 @@ public class GameManager : MonoBehaviour
         {
             _timeRemaining -= Time.deltaTime;
             UpdateTimerDisplay(_timeRemaining);
+            // Pubblica l'evento che la UI può ascoltare
+            if (_gameEvents != null)
+            {
+                _gameEvents.PublishTimeChanged(_timeRemaining);
+            }
         }
         else
         {
             _timeRemaining = 0;
             UpdateTimerDisplay(0);
-            GameOver(false);
+            PublishGameOverEvent(false); // Sconfitta per timeout
         }
     }
 
-    /// <summary>
-    /// Logica pura: Determina se il tempo è scaduto.
-    /// ✅ TESTABILE: No dipendenze, solo logica booleana
-    /// </summary>
-    public bool IsTimeExpired(float timeRemaining)
+    private void OnDestroy()
     {
-        return timeRemaining <= 0f;
-    }
-
-    /// <summary>
-    /// Logica pura: Determina se il giocatore ha vinto.
-    /// Vince se ha raccolto abbastanza monete.
-    /// ✅ TESTABILE: Pura logica, no dipendenze
-    /// </summary>
-    public bool ShouldPlayerWin(int currentCoins, int requiredCoins)
-    {
-        return currentCoins >= requiredCoins;
-    }
-
-    /// <summary>
-    /// Logica pura: Converte secondi in minuti e secondi.
-    /// Ritorna un array [minutes, seconds].
-    /// ✅ TESTABILE: Pura matematica
-    /// </summary>
-    public int[] ConvertTimeToMinutesSeconds(float totalSeconds)
-    {
-        int minutes = Mathf.FloorToInt(totalSeconds / 60f);
-        int seconds = Mathf.FloorToInt(totalSeconds % 60f);
-        return new int[] { minutes, seconds };
-    }
-
-    /// <summary>
-    /// Logica pura: Formatta il tempo nel formato MM:SS.
-    /// ✅ TESTABILE: Pura string formatting
-    /// </summary>
-    public string FormatTimeToString(int minutes, int seconds)
-    {
-        return string.Format("{0:00}:{1:00}", minutes, seconds);
-    }
-
-    /// <summary>
-    /// Logica pura: Determina se il timer dovrebbe essere rosso (urgenza).
-    /// Rosso quando rimangono 15 secondi o meno.
-    /// ✅ TESTABILE: Pura logica booleana
-    /// </summary>
-    public bool ShouldTimerBeRed(float timeRemaining)
-    {
-        return timeRemaining <= 15f;
-    }
-
-    /// <summary>
-    /// Logica pura: Aggiunge monete e ritorna il nuovo contatore.
-    /// Non modifica stato direttamente - ritorna il nuovo valore.
-    /// ✅ TESTABILE: Pura aritmetica
-    /// </summary>
-    public int CalculateNewCoinCount(int currentCoins, int amountToAdd)
-    {
-        return currentCoins + amountToAdd;
-    }
-
-    /// <summary>
-    /// Logica pura: Determina se aggiungere tempo bonus.
-    /// Aggiungi tempo bonus SOLO se la moneta è speciale.
-    /// ✅ TESTABILE: Pura logica condizionale
-    /// </summary>
-    public float CalculateNewTimeRemaining(float currentTime, float timeBonus, bool isSpecial)
-    {
-        if (isSpecial)
+        UnsubscribeFromEvents();
+        
+        if (_backToMenuButtonVictory != null)
         {
-            return currentTime + timeBonus;
+            _backToMenuButtonVictory.onClick.RemoveListener(BackToMenu);
         }
-        return currentTime;
+
+        if (_restartButtonDefeat != null)
+        {
+            _restartButtonDefeat.onClick.RemoveListener(RestartGame);
+        }
+
+        if (_backToMenuButtonDefeat != null)
+        {
+            _backToMenuButtonDefeat.onClick.RemoveListener(BackToMenu);
+        }
     }
 
-    /// <summary>
-    /// Aggiunge monete e gestisce la logica di vittoria.
-    /// Delega i calcoli ai metodi puri (testabili).
-    /// </summary>
-    public void AddCoin(int amount, float timeBonus, bool isSpecial = false)
-    {
-        if (_isGameOver)
-        {
-            return;
-        }
+    // ════════════════════════════════════════════════════════════════
+    // SUBSCRIPTION MANAGEMENT
+    // ════════════════════════════════════════════════════════════════
 
-        // STEP 1: CALCOLA IL NUOVO CONTATORE DI MONETE (Logica pura)
+    private void SubscribeToEvents()
+    {
+        if (_gameEvents != null)
+        {
+            _gameEvents.OnCoinCollected += HandleCoinCollected;
+            _gameEvents.OnGameOver += HandleGameOver;
+            Debug.Log("[GameManager] Event listeners registered");
+        }
+    }
+
+    private void UnsubscribeFromEvents()
+    {
+        if (_gameEvents != null)
+        {
+            _gameEvents.OnCoinCollected -= HandleCoinCollected;
+            _gameEvents.OnGameOver -= HandleGameOver;
+            Debug.Log("[GameManager] Event listeners unregistered");
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // EVENT HANDLERS
+    // ════════════════════════════════════════════════════════════════
+
+    private void HandleCoinCollected(int amount, float timeBonus, bool isSpecial)
+    {
+        if (_isGameOver) return;
+
         _currentCoins = CalculateNewCoinCount(_currentCoins, amount);
-
-        // STEP 2: CALCOLA IL NUOVO TEMPO RIMANENTE (Logica pura)
         _timeRemaining = CalculateNewTimeRemaining(_timeRemaining, timeBonus, isSpecial);
 
         if (isSpecial)
@@ -230,16 +214,76 @@ public class GameManager : MonoBehaviour
 
         UpdateCoinDisplay();
 
-        // STEP 3: VERIFICA CONDIZIONE DI VITTORIA (Logica pura)
+        if (_gameEvents != null)
+        {
+            _gameEvents.PublishCoinCountChanged(_currentCoins, RequiredCoins);
+        }
+
         if (ShouldPlayerWin(_currentCoins, RequiredCoins))
         {
-            GameOver(true);
+            if (_gameEvents != null)
+            {
+                _gameEvents.PublishVictoryConditionMet();
+            }
+            PublishGameOverEvent(true);
         }
     }
 
-    /// <summary>
-    /// Aggiorna il display delle monete.
-    /// </summary>
+    private void HandleGameOver(bool hasWon)
+    {
+        if (_isGameOver) return;
+        PublishGameOverEvent(hasWon);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // LOGICA PURA - Testabile
+    // ════════════════════════════════════════════════════════════════
+
+    public bool IsTimeExpired(float timeRemaining)
+    {
+        return timeRemaining <= 0f;
+    }
+
+    public bool ShouldPlayerWin(int currentCoins, int requiredCoins)
+    {
+        return currentCoins >= requiredCoins;
+    }
+
+    public int[] ConvertTimeToMinutesSeconds(float totalSeconds)
+    {
+        int minutes = Mathf.FloorToInt(totalSeconds / 60f);
+        int seconds = Mathf.FloorToInt(totalSeconds % 60f);
+        return new int[] { minutes, seconds };
+    }
+
+    public string FormatTimeToString(int minutes, int seconds)
+    {
+        return string.Format("{0:00}:{1:00}", minutes, seconds);
+    }
+
+    public bool ShouldTimerBeRed(float timeRemaining)
+    {
+        return timeRemaining <= 15f;
+    }
+
+    public int CalculateNewCoinCount(int currentCoins, int amountToAdd)
+    {
+        return currentCoins + amountToAdd;
+    }
+
+    public float CalculateNewTimeRemaining(float currentTime, float timeBonus, bool isSpecial)
+    {
+        if (isSpecial)
+        {
+            return currentTime + timeBonus;
+        }
+        return currentTime;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // UI MANAGEMENT
+    // ════════════════════════════════════════════════════════════════
+
     private void UpdateCoinDisplay()
     {
         if (_coinText != null)
@@ -248,21 +292,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Aggiorna il display del timer e il colore in base al tempo rimanente.
-    /// </summary>
-    void UpdateTimerDisplay(float timeToDisplay)
+    private void UpdateTimerDisplay(float timeToDisplay)
     {
-        // STEP 1: CONVERTI TEMPO IN MINUTI/SECONDI (Logica pura)
         int[] timeComponents = ConvertTimeToMinutesSeconds(timeToDisplay);
         int minutes = timeComponents[0];
         int seconds = timeComponents[1];
 
-        // STEP 2: FORMATTA LA STRINGA (Logica pura)
         string formattedTime = FormatTimeToString(minutes, seconds);
         _timerText.text = formattedTime;
 
-        // STEP 3: DETERMINA IL COLORE (Logica pura)
         if (ShouldTimerBeRed(timeToDisplay))
         {
             _timerText.color = Color.red;
@@ -273,21 +311,19 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Gestisce la fine della partita (vittoria o sconfitta).
-    /// Mette in pausa il gioco, mostra il cursore, e visualizza l'immagine appropriata.
-    /// </summary>
-    public void GameOver(bool hasWon)
+    private void PublishGameOverEvent(bool hasWon)
     {
-        if (_isGameOver)
-        {
-            return;
-        }
+        if (_isGameOver) return;
 
         _isGameOver = true;
         _hasWon = hasWon;
 
-        Debug.Log($"[GameManager] GameOver - HasWon: {hasWon}");
+        Debug.Log($"[GameManager] Publishing GameOver event - HasWon: {hasWon}");
+
+        if (_gameEvents != null)
+        {
+            _gameEvents.PublishGameOver(hasWon);
+        }
 
         Time.timeScale = 0f;
         Cursor.lockState = CursorLockMode.None;
@@ -310,6 +346,10 @@ public class GameManager : MonoBehaviour
             }
         }
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // SCENE MANAGEMENT
+    // ════════════════════════════════════════════════════════════════
 
     private void BackToMenu()
     {
@@ -334,24 +374,6 @@ public class GameManager : MonoBehaviour
         if (_exitDoor != null)
         {
             _exitDoor.Open();
-        }
-    }
-
-    void OnDestroy()
-    {
-        if (_backToMenuButtonVictory != null)
-        {
-            _backToMenuButtonVictory.onClick.RemoveListener(BackToMenu);
-        }
-
-        if (_restartButtonDefeat != null)
-        {
-            _restartButtonDefeat.onClick.RemoveListener(RestartGame);
-        }
-
-        if (_backToMenuButtonDefeat != null)
-        {
-            _backToMenuButtonDefeat.onClick.RemoveListener(BackToMenu);
         }
     }
 }
