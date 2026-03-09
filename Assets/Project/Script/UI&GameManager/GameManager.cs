@@ -175,6 +175,7 @@ public class GameManager : MonoBehaviour
 
     private void BackToMenu()
     {
+        Debug.Log("[UIManager] BackToMenu chiamato");
         _isGameOver = true;
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.None;
@@ -185,6 +186,7 @@ public class GameManager : MonoBehaviour
 
     private void RestartGame()
     {
+        Debug.Log("[UIManager] RestartGame chiamato");
         _isGameOver = true;
         Time.timeScale = 1f;
         Cursor.lockState = CursorLockMode.Locked;

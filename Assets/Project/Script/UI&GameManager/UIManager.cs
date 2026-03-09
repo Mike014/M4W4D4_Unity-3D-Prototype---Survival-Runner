@@ -22,6 +22,8 @@ public class UIManager : MonoBehaviour
         // Cerchiamo il componente GameEvents && GameManager nella scena
         _gameEvents = GameEvents.Instance;
 
+        Debug.Log($"[UIManager] Victory button interactable: {_backToMenuButtonVictory?.interactable}");
+
         SubscribeToEvents();
 
         if (_victoryImage != null)
@@ -77,11 +79,13 @@ public class UIManager : MonoBehaviour
 
     private void BackToMenu()
     {
+        Debug.Log("[UIManager] BackToMenu chiamato");
         GameEvents.Instance.PublishBackToMenuRequested();
     }
 
     private void RestartGame()
     {
+        Debug.Log("[UIManager] RestartGame chiamato");
         GameEvents.Instance.PublishRestartRequested();
     }
 
