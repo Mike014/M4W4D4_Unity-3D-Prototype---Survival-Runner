@@ -13,7 +13,6 @@ public class GameManager : MonoBehaviour
     // ════════════════════════════════════════════════════════════════
     // VARIABILI INTERNE
     // ════════════════════════════════════════════════════════════════
-
     private int _currentCoins = 0;
     private bool _isGameOver = false;
 

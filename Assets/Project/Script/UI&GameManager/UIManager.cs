@@ -28,7 +28,7 @@ public class UIManager : MonoBehaviour
 
         if (_victoryImage != null)
         {
-            _victoryImage.enabled = false;
+            _victoryImage.gameObject.SetActive(false);
         }
         else
         {
@@ -37,7 +37,7 @@ public class UIManager : MonoBehaviour
 
         if (_defeatImage != null)
         {
-            _defeatImage.enabled = false;
+            _defeatImage.gameObject.SetActive(false);
         }
         else
         {
@@ -120,8 +120,8 @@ public class UIManager : MonoBehaviour
         {
             _gameEvents.OnCoinCountChanged += HandleCoinCountChanged;
             _gameEvents.OnGameOver += HandleGameOver;
-            _gameEvents.OnBackToMenuRequested += BackToMenu;
-            _gameEvents.OnRestartRequested += RestartGame;
+            // _gameEvents.OnBackToMenuRequested += BackToMenu;
+            // _gameEvents.OnRestartRequested += RestartGame;
             _gameEvents.OnTimeChanged += HandleTimeChanged;
         }
     }
@@ -132,8 +132,8 @@ public class UIManager : MonoBehaviour
         {
             _gameEvents.OnCoinCountChanged -= HandleCoinCountChanged;
             _gameEvents.OnGameOver -= HandleGameOver;
-            _gameEvents.OnBackToMenuRequested -= BackToMenu;
-            _gameEvents.OnRestartRequested -= RestartGame;
+            // _gameEvents.OnBackToMenuRequested -= BackToMenu;
+            // _gameEvents.OnRestartRequested -= RestartGame;
             _gameEvents.OnTimeChanged -= HandleTimeChanged;
         }
     }

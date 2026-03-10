@@ -94,34 +94,6 @@ public class GameEvents : MonoBehaviour
         Debug.Log("[GameEvents] Restart Requested");
         OnRestartRequested?.Invoke();
     }
-
-    public void ResetEvents()
-    {
-        OnCoinCollected = null;
-        OnGameOver = null;
-        OnTimeChanged = null;
-        OnCoinCountChanged = null;
-        OnVictoryConditionMet = null;
-        OnBackToMenuRequested = null;
-        OnRestartRequested = null;
-
-        Debug.Log("[GameEvents] All events reset");
-    }
-
-    private void OnEnable()
-    {
-        SceneManager.sceneLoaded += OnSceneLoaded;
-    }
-
-    private void OnDisable()
-    {
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-    }
-
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        ResetEvents();
-    }
 }
 
 
